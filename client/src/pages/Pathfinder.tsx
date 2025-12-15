@@ -29,9 +29,15 @@ export default function Pathfinder() {
       setGrid(getInitialGrid(ROWS, COLS));
     };
     updateGrid();
+
+    // Global mouse up handler to prevent stuck dragging state
+    const handleGlobalMouseUp = () => setIsMousePressed(false);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, []);
 
-  const handleMouseDown = (row: number, col: number) => {
+  const handleMouseDown = (row: number, col: number, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent default drag behavior
     if (isRunning) return;
     const newGrid = getNewGridWithWallToggled(grid, row, col);
     setGrid(newGrid);
@@ -223,9 +229,10 @@ export default function Pathfinder() {
                             <div
                                 key={`${rowIdx}-${nodeIdx}`}
                                 id={`node-${rowIdx}-${nodeIdx}`}
-                                onMouseDown={() => handleMouseDown(rowIdx, nodeIdx)}
+                                onMouseDown={(e) => handleMouseDown(rowIdx, nodeIdx, e)}
                                 onMouseEnter={() => handleMouseEnter(rowIdx, nodeIdx)}
                                 onMouseUp={handleMouseUp}
+                                onDragStart={(e) => e.preventDefault()}
                                 className={cn(
                                     "w-full h-full border-[0.5px] border-white/5 transition-all duration-200 select-none",
                                     isStart ? "bg-neon-green shadow-[0_0_15px_var(--color-neon-green)] scale-110 z-10 rounded-sm" : "",
