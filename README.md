@@ -40,6 +40,13 @@ A visual shortest path algorithm explorer with a retro neon arcade aesthetic. Wa
    http://localhost:5000
    ```
 
+### Run on a Different Port
+To use a custom port instead of 5000:
+```bash
+npm run dev:client -- --port 3000
+```
+Replace `3000` with any port you prefer.
+
 ## How to Use
 
 1. **Draw Walls**: Click and drag on the grid to create obstacles
