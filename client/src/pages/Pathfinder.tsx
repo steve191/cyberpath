@@ -64,7 +64,7 @@ GridNode.displayName = "GridNode";
 
 export default function Pathfinder() {
   const [grid, setGrid] = useState<Node[][]>([]);
-  const [isMousePressed, setIsMousePressed] = useState(false);
+  const isMousePressed = useRef(false); // Use ref for synchronous access inside closures
   const [isRunning, setIsRunning] = useState(false);
   const [stats, setStats] = useState({ visited: 0, pathLength: 0 });
 
@@ -76,7 +76,9 @@ export default function Pathfinder() {
     updateGrid();
 
     // Global mouse up handler to prevent stuck dragging state
-    const handleGlobalMouseUp = () => setIsMousePressed(false);
+    const handleGlobalMouseUp = () => {
+      isMousePressed.current = false;
+    };
     window.addEventListener('mouseup', handleGlobalMouseUp);
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
   }, []);
@@ -85,16 +87,17 @@ export default function Pathfinder() {
     e.preventDefault(); 
     if (isRunning) return;
     
+    isMousePressed.current = true;
+    
     // Functional update to ensure we always have the latest grid state
     setGrid(prevGrid => {
         const newGrid = getNewGridWithWallToggled(prevGrid, row, col);
         return newGrid;
     });
-    setIsMousePressed(true);
   };
 
   const handleMouseEnter = (row: number, col: number) => {
-    if (!isMousePressed || isRunning) return;
+    if (!isMousePressed.current || isRunning) return;
     
     // Functional update is CRITICAL here for fast dragging
     setGrid(prevGrid => {
@@ -104,7 +107,7 @@ export default function Pathfinder() {
   };
 
   const handleMouseUp = () => {
-    setIsMousePressed(false);
+    isMousePressed.current = false;
   };
 
   const visualizeDijkstra = () => {
