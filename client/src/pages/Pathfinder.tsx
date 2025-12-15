@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, memo } from "react";
 import {
   dijkstra,
   getNodesInShortestPathOrder,
@@ -16,6 +16,52 @@ import { cn } from "@/lib/utils";
 const ROWS = 25;
 const COLS = 50;
 
+// Memoized Grid Node Component for Performance
+const GridNode = memo(({ 
+    row, 
+    col, 
+    isStart, 
+    isFinish, 
+    isWall, 
+    onMouseDown, 
+    onMouseEnter, 
+    onMouseUp 
+}: {
+    row: number,
+    col: number,
+    isStart: boolean,
+    isFinish: boolean,
+    isWall: boolean,
+    onMouseDown: (row: number, col: number, e: React.MouseEvent) => void,
+    onMouseEnter: (row: number, col: number) => void,
+    onMouseUp: () => void
+}) => {
+    return (
+        <div
+            id={`node-${row}-${col}`}
+            onMouseDown={(e) => onMouseDown(row, col, e)}
+            onMouseEnter={() => onMouseEnter(row, col)}
+            onMouseUp={onMouseUp}
+            onDragStart={(e) => e.preventDefault()} // Prevent ghost drag
+            className={cn(
+                "w-full h-full border-[0.5px] border-white/5 transition-all duration-75 select-none", // Reduced duration for snappier feel
+                isStart ? "bg-neon-green shadow-[0_0_15px_var(--color-neon-green)] scale-110 z-10 rounded-sm" : "",
+                isFinish ? "bg-neon-pink shadow-[0_0_15px_var(--color-neon-pink)] scale-110 z-10 rounded-sm animate-pulse" : "",
+                isWall ? "bg-white/20 border-white/40 animate-wall shadow-inner" : "hover:bg-white/10 cursor-pointer"
+            )}
+        />
+    );
+}, (prevProps, nextProps) => {
+    // Only re-render if the specific properties that affect appearance change
+    return (
+        prevProps.isWall === nextProps.isWall &&
+        prevProps.isStart === nextProps.isStart &&
+        prevProps.isFinish === nextProps.isFinish
+    );
+});
+
+GridNode.displayName = "GridNode";
+
 export default function Pathfinder() {
   const [grid, setGrid] = useState<Node[][]>([]);
   const [isMousePressed, setIsMousePressed] = useState(false);
@@ -25,7 +71,6 @@ export default function Pathfinder() {
   useEffect(() => {
     // Initialize responsive grid
     const updateGrid = () => {
-      // Logic to adjust rows/cols could go here, for now static
       setGrid(getInitialGrid(ROWS, COLS));
     };
     updateGrid();
@@ -37,17 +82,25 @@ export default function Pathfinder() {
   }, []);
 
   const handleMouseDown = (row: number, col: number, e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent default drag behavior
+    e.preventDefault(); 
     if (isRunning) return;
-    const newGrid = getNewGridWithWallToggled(grid, row, col);
-    setGrid(newGrid);
+    
+    // Functional update to ensure we always have the latest grid state
+    setGrid(prevGrid => {
+        const newGrid = getNewGridWithWallToggled(prevGrid, row, col);
+        return newGrid;
+    });
     setIsMousePressed(true);
   };
 
   const handleMouseEnter = (row: number, col: number) => {
     if (!isMousePressed || isRunning) return;
-    const newGrid = getNewGridWithWallToggled(grid, row, col);
-    setGrid(newGrid);
+    
+    // Functional update is CRITICAL here for fast dragging
+    setGrid(prevGrid => {
+        const newGrid = getNewGridWithWallToggled(prevGrid, row, col);
+        return newGrid;
+    });
   };
 
   const handleMouseUp = () => {
@@ -58,7 +111,6 @@ export default function Pathfinder() {
     if (isRunning) return;
     setIsRunning(true);
     
-    // Reset previous visitation stats but keep walls
     const cleanGrid = grid.map(row => row.map(node => ({
       ...node,
       isVisited: false,
@@ -66,13 +118,6 @@ export default function Pathfinder() {
       previousNode: null
     })));
     
-    // We need to mutate the cleanGrid for the algorithm to work, 
-    // but we won't set state until animation is done or we animate directly via DOM
-    // For React performance in this specific dense-grid case, direct DOM manipulation 
-    // for the animation steps is often smoother than 1000 setState calls.
-    // However, to keep it "React-y" and simple code-wise, we can use a hybrid approach:
-    // Run algo, get result lists, then animate CSS classes.
-
     const startNode = cleanGrid[DEFAULT_START_ROW][DEFAULT_START_COL];
     const finishNode = cleanGrid[DEFAULT_FINISH_ROW][DEFAULT_FINISH_COL];
     
@@ -92,7 +137,6 @@ export default function Pathfinder() {
       }
       setTimeout(() => {
         const node = visitedNodesInOrder[i];
-        // Direct DOM manipulation for performance on high-frequency updates
         const element = document.getElementById(`node-${node.row}-${node.col}`);
         if (element && !node.isStart && !node.isFinish) {
           element.className = `w-full h-full border-[0.5px] border-white/5 animate-visited`;
@@ -122,7 +166,6 @@ export default function Pathfinder() {
     if (isRunning) return;
     setGrid(getInitialGrid(ROWS, COLS));
     setStats({ visited: 0, pathLength: 0 });
-    // Reset DOM classes
     const nodes = document.getElementsByClassName('animate-visited');
     while(nodes.length > 0){
         nodes[0].classList.remove('animate-visited');
@@ -131,13 +174,10 @@ export default function Pathfinder() {
     while(pathNodes.length > 0){
         pathNodes[0].classList.remove('animate-path');
     }
-    // Hard reset for safety
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             const el = document.getElementById(`node-${r}-${c}`);
             if (el) {
-                // preserve walls if we only wanted to clear path? No, clearBoard means all.
-                // Re-apply basic classes
                 const isStart = r === DEFAULT_START_ROW && c === DEFAULT_START_COL;
                 const isFinish = r === DEFAULT_FINISH_ROW && c === DEFAULT_FINISH_COL;
                 
@@ -153,7 +193,6 @@ export default function Pathfinder() {
 
   return (
     <div className="min-h-screen bg-neon-bg flex flex-col font-sans text-white overflow-hidden selection:bg-neon-cyan/30">
-      {/* Header */}
       <header className="border-b border-white/10 bg-black/20 backdrop-blur-md z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -200,10 +239,8 @@ export default function Pathfinder() {
         </div>
       </header>
 
-      {/* Main Grid Area */}
       <main className="flex-1 flex flex-col items-center justify-center p-4 relative">
         <div className="relative bg-black/40 p-1 rounded-lg border border-white/10 shadow-2xl backdrop-blur-sm">
-             {/* Stats Overlay */}
              <div className="absolute -top-12 left-0 flex gap-4 font-mono text-xs text-neon-cyan/80">
                 <div className="bg-black/40 px-3 py-1 rounded border border-white/10 flex items-center gap-2">
                     <Zap className="w-3 h-3" />
@@ -224,21 +261,17 @@ export default function Pathfinder() {
             >
                 {grid.map((row, rowIdx) => {
                     return row.map((node, nodeIdx) => {
-                        const { isStart, isFinish, isWall } = node;
                         return (
-                            <div
+                            <GridNode 
                                 key={`${rowIdx}-${nodeIdx}`}
-                                id={`node-${rowIdx}-${nodeIdx}`}
-                                onMouseDown={(e) => handleMouseDown(rowIdx, nodeIdx, e)}
-                                onMouseEnter={() => handleMouseEnter(rowIdx, nodeIdx)}
+                                row={rowIdx}
+                                col={nodeIdx}
+                                isStart={node.isStart}
+                                isFinish={node.isFinish}
+                                isWall={node.isWall}
+                                onMouseDown={handleMouseDown}
+                                onMouseEnter={handleMouseEnter}
                                 onMouseUp={handleMouseUp}
-                                onDragStart={(e) => e.preventDefault()}
-                                className={cn(
-                                    "w-full h-full border-[0.5px] border-white/5 transition-all duration-200 select-none",
-                                    isStart ? "bg-neon-green shadow-[0_0_15px_var(--color-neon-green)] scale-110 z-10 rounded-sm" : "",
-                                    isFinish ? "bg-neon-pink shadow-[0_0_15px_var(--color-neon-pink)] scale-110 z-10 rounded-sm animate-pulse" : "",
-                                    isWall ? "bg-white/20 border-white/40 animate-wall shadow-inner" : "hover:bg-white/10 cursor-pointer"
-                                )}
                             />
                         );
                     });
@@ -255,15 +288,22 @@ export default function Pathfinder() {
 }
 
 const getNewGridWithWallToggled = (grid: Node[][], row: number, col: number) => {
-  const newGrid = grid.slice();
-  const node = newGrid[row][col];
+  const newGrid = grid.slice().map(row => row.slice()); // Deep copy the rows we are modifying is safer, but shallow copy of rows is often enough for React to detect change if we replace the row.
+  // Actually, standard spread [...grid] is shallow. 
+  // We need to be careful not to mutate the previous state directly.
+  // The safest way for this 2D array:
+  const newRow = [...newGrid[row]];
+  const node = newRow[col];
+  
   // Don't overwrite start/finish
-  if (node.isStart || node.isFinish) return newGrid;
+  if (node.isStart || node.isFinish) return grid; // Return original grid if no change
   
   const newNode = {
     ...node,
     isWall: !node.isWall,
   };
-  newGrid[row][col] = newNode;
+  newRow[col] = newNode;
+  newGrid[row] = newRow;
+  
   return newGrid;
 };
